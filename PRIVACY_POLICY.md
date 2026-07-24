@@ -130,7 +130,7 @@ Once your request has been verified, we will delete your personal data within a 
 
 **Account deletion requests:**
 
-Email: **[support@aossie.org](mailto:support@aossie.org)**
+Email: aossie.oss@gmail.com
 
 
 
@@ -154,7 +154,7 @@ If you have any questions about this Privacy Policy or wish to exercise your pri
 
 **Organization:** AOSSIE
 
-**Email:** [support@aossie.org](mailto:support@aossie.org)
+**Email:** aossie.oss@gmail.com
 
 **Website:** https://aossie.org
 
