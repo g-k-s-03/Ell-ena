@@ -2,6 +2,12 @@
 
 This guide explains how to set up Ell-ena locally (frontend + Supabase backend) and how to contribute via pull requests.
 
+## Community
+
+Discuss Ell-ena on the AOSSIE Discord in our project channel:
+
+- [Ell-ena Discord channel](https://discord.com/channels/1022871757289422898/1349032611267477586)
+
 ## Quick start (most people follow this)
    Fork the repository https://github.com/AOSSIE-Org/Ell-ena
 
