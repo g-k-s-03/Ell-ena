@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -879,6 +880,110 @@ class SupabaseService {
     } catch (e) {
       debugPrint('Error updating profile: $e');
       return false;
+    }
+  }
+
+  // Upload/replace the current user's avatar image.
+  // Storage path is fixed as '<user_id>/avatar.jpg' so each new upload
+  // overwrites the previous one at the same path (upsert: true), matching
+  // the path convention documented in
+  // supabase/migrations/20251021110000_avatar_url_and_storage.sql and
+  // avoiding orphaned old avatar files accumulating in storage.
+  Future<Map<String, dynamic>> uploadAvatar(File imageFile) async {
+    try {
+      if (!_isInitialized) {
+        return {
+          'success': false,
+          'error': 'Supabase is not initialized',
+        };
+      }
+
+      final user = _client.auth.currentUser;
+      if (user == null) {
+        return {
+          'success': false,
+          'error': 'User not authenticated',
+        };
+      }
+
+      final path = '${user.id}/avatar.jpg';
+
+      await _client.storage.from('avatars').upload(
+            path,
+            imageFile,
+            fileOptions: const FileOptions(upsert: true),
+          );
+
+      final publicUrl = _client.storage.from('avatars').getPublicUrl(path);
+
+      final profileUpdated =
+          await updateUserProfile({'avatar_url': publicUrl});
+      if (!profileUpdated) {
+        return {
+          'success': false,
+          'error': 'Avatar uploaded but failed to update profile',
+        };
+      }
+
+      return {
+        'success': true,
+        'avatar_url': publicUrl,
+      };
+    } catch (e) {
+      debugPrint('Error uploading avatar: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Remove the current user's avatar: deletes the storage object (if any)
+  // and clears avatar_url on the user's profile.
+  Future<Map<String, dynamic>> removeAvatar() async {
+    try {
+      if (!_isInitialized) {
+        return {
+          'success': false,
+          'error': 'Supabase is not initialized',
+        };
+      }
+
+      final user = _client.auth.currentUser;
+      if (user == null) {
+        return {
+          'success': false,
+          'error': 'User not authenticated',
+        };
+      }
+
+      final path = '${user.id}/avatar.jpg';
+
+      try {
+        await _client.storage.from('avatars').remove([path]);
+      } catch (e) {
+        // The object may not exist (e.g. the user never uploaded an
+        // avatar) -- that's not a hard failure as long as we can still
+        // clear avatar_url on the profile below.
+        debugPrint('Error removing avatar object (continuing): $e');
+      }
+
+      final profileUpdated =
+          await updateUserProfile({'avatar_url': null});
+      if (!profileUpdated) {
+        return {
+          'success': false,
+          'error': 'Failed to clear avatar on profile',
+        };
+      }
+
+      return {'success': true};
+    } catch (e) {
+      debugPrint('Error removing avatar: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+      };
     }
   }
 
