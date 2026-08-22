@@ -1,4 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/user_profile_provider.dart';
 import '../../services/supabase_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -18,7 +24,9 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _supabaseService = SupabaseService();
+  final _imagePicker = ImagePicker();
   bool _isLoading = false;
+  bool _isAvatarUpdating = false;
 
   late final TextEditingController _firstNameController;
   late final TextEditingController _lastNameController;
@@ -26,6 +34,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   String? _fullName;
   String? _email;
+  String? _avatarUrl;
 
   @override
   void initState() {
@@ -43,6 +52,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     _fullName = widget.userProfile['full_name'];
     _email = widget.userProfile['email'];
+    _avatarUrl = widget.userProfile['avatar_url'] as String?;
   }
 
   @override
@@ -118,6 +128,338 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  Future<void> _showImageSourceActionSheet() async {
+    if (_isAvatarUpdating) return;
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from Gallery'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Take a Photo'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (source == null) return;
+    await _pickAndPreviewImage(source);
+  }
+
+  Future<void> _pickAndPreviewImage(ImageSource source) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (picked == null || !mounted) return;
+
+      final file = File(picked.path);
+      final confirmed = await _showAvatarPreviewDialog(file);
+      if (confirmed == true) {
+        await _uploadAvatar(file);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error selecting image: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<bool?> _showAvatarPreviewDialog(File file) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: const Text('Update profile photo?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipOval(
+              child: Image.file(
+                file,
+                width: 140,
+                height: 140,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'This will replace your current profile photo.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade600,
+            ),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _uploadAvatar(File file) async {
+    setState(() {
+      _isAvatarUpdating = true;
+    });
+
+    try {
+      final result = await _supabaseService.uploadAvatar(file);
+
+      if (result['success'] == true) {
+        final newUrl = result['avatar_url'] as String?;
+
+        if (mounted) {
+          setState(() {
+            _avatarUrl = newUrl;
+          });
+
+          context.read<UserProfileController>().updateAvatarUrl(newUrl);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile photo updated'),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          widget.onProfileUpdated();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to update photo: ${result['error']}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error uploading photo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAvatarUpdating = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _confirmAndRemoveAvatar() async {
+    if (_isAvatarUpdating) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: const Text('Remove profile photo?'),
+        content: const Text(
+          'Your profile photo will be removed and replaced with your initials.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade400,
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    await _removeAvatar();
+  }
+
+  Future<void> _removeAvatar() async {
+    setState(() {
+      _isAvatarUpdating = true;
+    });
+
+    try {
+      final result = await _supabaseService.removeAvatar();
+
+      if (result['success'] == true) {
+        if (mounted) {
+          setState(() {
+            _avatarUrl = null;
+          });
+
+          context.read<UserProfileController>().updateAvatarUrl(null);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile photo removed'),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          widget.onProfileUpdated();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to remove photo: ${result['error']}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error removing photo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAvatarUpdating = false;
+        });
+      }
+    }
+  }
+
+  // Deterministic color per user, matching the pattern already used for
+  // initials avatars in team_members_screen.dart.
+  Color _avatarColorFor(String seed) {
+    const colors = [
+      Colors.blue,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+      Colors.red,
+      Colors.teal,
+      Colors.indigo,
+      Colors.pink,
+    ];
+    return colors[seed.hashCode.abs() % colors.length];
+  }
+
+  String _initialsFor(String? name) {
+    final trimmed = name?.trim() ?? '';
+    if (trimmed.isEmpty) return '?';
+    final parts = trimmed.split(RegExp(r'\s+'));
+    final first = parts.first.isNotEmpty ? parts.first[0] : '';
+    final last =
+        parts.length > 1 && parts.last.isNotEmpty ? parts.last[0] : '';
+    final initials = (first + last).toUpperCase();
+    return initials.isEmpty ? '?' : initials;
+  }
+
+  Widget _buildAvatar() {
+    final displayName = _fullName ?? widget.userProfile['full_name'];
+    final seed = (displayName ?? _email ?? widget.userProfile['id'] ?? '?')
+        .toString();
+
+    if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
+      return ClipOval(
+        child: Image.network(
+          _avatarUrl!,
+          width: 100,
+          height: 100,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return Container(
+              width: 100,
+              height: 100,
+              color: Theme.of(context).colorScheme.surfaceVariant,
+              child: const Center(
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) => Container(
+            width: 100,
+            height: 100,
+            color: _avatarColorFor(seed),
+            alignment: Alignment.center,
+            child: Text(
+              _initialsFor(displayName),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: 100,
+      height: 100,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: _avatarColorFor(seed),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        _initialsFor(displayName),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 32,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -152,49 +494,76 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Center(
-                      child: Stack(
-                        alignment: Alignment.bottomRight,
+                      child: Column(
                         children: [
-                          Container(
-                            width: 100,
-                            height: 100,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white,
-                              border: Border.all(color: Colors.white, width: 3),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .shadow
-                                      .withOpacity(0.2),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 5),
+                          Stack(
+                            alignment: Alignment.bottomRight,
+                            children: [
+                              Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                      color: Colors.white, width: 3),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .shadow
+                                          .withOpacity(0.2),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 5),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                            child: Icon(
-                              Icons.person,
-                              size: 50,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
+                                child: _buildAvatar(),
+                              ),
+                              InkWell(
+                                onTap: _isAvatarUpdating
+                                    ? null
+                                    : _showImageSourceActionSheet,
+                                customBorder: const CircleBorder(),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade400,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: _isAvatarUpdating
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.camera_alt,
+                                          size: 16,
+                                          color: Colors.white,
+                                        ),
+                                ),
+                              ),
+                            ],
                           ),
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade400,
-                              shape: BoxShape.circle,
+                          if (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+                            TextButton.icon(
+                              onPressed: _isAvatarUpdating
+                                  ? null
+                                  : _confirmAndRemoveAvatar,
+                              icon: Icon(Icons.delete_outline,
+                                  color: Colors.red.shade400, size: 18),
+                              label: Text(
+                                'Remove Photo',
+                                style: TextStyle(color: Colors.red.shade400),
+                              ),
                             ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              size: 16,
-                              color: Colors.white,
-                            ),
-                          ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 16),
                     Text(
                       'Personal Information',
                       style: Theme.of(context)
