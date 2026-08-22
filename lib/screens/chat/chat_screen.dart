@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:ell_ena/services/ai_service.dart';
 import 'package:ell_ena/services/supabase_service.dart';
 import 'package:intl/intl.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
+import '../../providers/user_profile_provider.dart';
+import '../../widgets/custom_widgets.dart';
 import '../tasks/task_detail_screen.dart';
 import '../tickets/ticket_detail_screen.dart';
 import '../meetings/meeting_detail_screen.dart';
@@ -283,7 +286,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
     setState(() {
       _messages.add(
-        ChatMessage(text: userMessage, isUser: true, timestamp: DateTime.now()),
+        ChatMessage(
+          text: userMessage,
+          isUser: true,
+          timestamp: DateTime.now(),
+          avatarUrl: context.read<UserProfileController>().avatarUrl,
+        ),
       );
       _isProcessing = true;
     });
@@ -1409,7 +1417,8 @@ class _ChatBubble extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          if (message.isUser) _buildAvatar(context, isUser: true),
+          if (message.isUser)
+            _buildAvatar(context, isUser: true, avatarUrl: message.avatarUrl),
         ],
       ),
     );
@@ -1548,7 +1557,15 @@ class _ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildAvatar(BuildContext context, {required bool isUser}) {
+  Widget _buildAvatar(
+    BuildContext context, {
+    required bool isUser,
+    String? avatarUrl,
+  }) {
+    if (isUser && avatarUrl != null && avatarUrl.isNotEmpty) {
+      return UserAvatar(avatarUrl: avatarUrl, name: 'You', radius: 18);
+    }
+
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: 36,

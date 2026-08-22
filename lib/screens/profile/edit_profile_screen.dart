@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../providers/user_profile_provider.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/custom_widgets.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> userProfile;
@@ -373,93 +374,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  // Deterministic color per user, matching the pattern already used for
-  // initials avatars in team_members_screen.dart.
-  Color _avatarColorFor(String seed) {
-    const colors = [
-      Colors.blue,
-      Colors.green,
-      Colors.orange,
-      Colors.purple,
-      Colors.red,
-      Colors.teal,
-      Colors.indigo,
-      Colors.pink,
-    ];
-    return colors[seed.hashCode.abs() % colors.length];
-  }
-
-  String _initialsFor(String? name) {
-    final trimmed = name?.trim() ?? '';
-    if (trimmed.isEmpty) return '?';
-    final parts = trimmed.split(RegExp(r'\s+'));
-    final first = parts.first.isNotEmpty ? parts.first[0] : '';
-    final last =
-        parts.length > 1 && parts.last.isNotEmpty ? parts.last[0] : '';
-    final initials = (first + last).toUpperCase();
-    return initials.isEmpty ? '?' : initials;
-  }
-
-  Widget _buildAvatar() {
-    final displayName = _fullName ?? widget.userProfile['full_name'];
-    final seed = (displayName ?? _email ?? widget.userProfile['id'] ?? '?')
-        .toString();
-
-    if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
-      return ClipOval(
-        child: Image.network(
-          _avatarUrl!,
-          width: 100,
-          height: 100,
-          fit: BoxFit.cover,
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return Container(
-              width: 100,
-              height: 100,
-              color: Theme.of(context).colorScheme.surfaceVariant,
-              child: const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            );
-          },
-          errorBuilder: (context, error, stackTrace) => Container(
-            width: 100,
-            height: 100,
-            color: _avatarColorFor(seed),
-            alignment: Alignment.center,
-            child: Text(
-              _initialsFor(displayName),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      width: 100,
-      height: 100,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: _avatarColorFor(seed),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        _initialsFor(displayName),
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 32,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -517,7 +431,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                     ),
                                   ],
                                 ),
-                                child: _buildAvatar(),
+                                child: UserAvatar(
+                                  avatarUrl: _avatarUrl,
+                                  name: (_fullName ??
+                                          widget.userProfile['full_name'] ??
+                                          _email ??
+                                          widget.userProfile['id'] ??
+                                          '?')
+                                      .toString(),
+                                  radius: 50,
+                                ),
                               ),
                               InkWell(
                                 onTap: _isAvatarUpdating
