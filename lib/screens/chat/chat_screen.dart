@@ -290,7 +290,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           text: userMessage,
           isUser: true,
           timestamp: DateTime.now(),
-          avatarUrl: context.read<UserProfileController>().avatarUrl,
         ),
       );
       _isProcessing = true;
@@ -1417,8 +1416,7 @@ class _ChatBubble extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          if (message.isUser)
-            _buildAvatar(context, isUser: true, avatarUrl: message.avatarUrl),
+          if (message.isUser) _buildAvatar(context, isUser: true),
         ],
       ),
     );
@@ -1560,10 +1558,18 @@ class _ChatBubble extends StatelessWidget {
   Widget _buildAvatar(
     BuildContext context, {
     required bool isUser,
-    String? avatarUrl,
   }) {
-    if (isUser && avatarUrl != null && avatarUrl.isNotEmpty) {
-      return UserAvatar(avatarUrl: avatarUrl, name: 'You', radius: 18);
+    if (isUser) {
+      // context.select (not context.watch) so this bubble only rebuilds
+      // when avatarUrl specifically changes, not on every profile field
+      // change -- and reads it live, so old messages in the chat history
+      // pick up a new avatar immediately after it's changed, instead of
+      // showing whatever was current at send-time.
+      final avatarUrl = context
+          .select<UserProfileController, String?>((c) => c.avatarUrl);
+      if (avatarUrl != null && avatarUrl.isNotEmpty) {
+        return UserAvatar(avatarUrl: avatarUrl, name: 'You', radius: 18);
+      }
     }
 
     final colorScheme = Theme.of(context).colorScheme;
@@ -1737,7 +1743,6 @@ class ChatMessage {
   final bool isCard;
   final String? cardType;
   final Map<String, dynamic>? cardData;
-  final String? avatarUrl; // Add avatar URL for profile pictures
 
   ChatMessage({
     required this.text,
@@ -1746,7 +1751,6 @@ class ChatMessage {
     this.isCard = false,
     this.cardType,
     this.cardData,
-    this.avatarUrl,
   });
 }
 

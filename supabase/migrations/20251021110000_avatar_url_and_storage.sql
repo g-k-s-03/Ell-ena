@@ -38,15 +38,15 @@ ON CONFLICT (id) DO NOTHING;
 -- Anyone (including anonymous/unauthenticated requests) can read avatar
 -- objects, since the bucket is public and avatars must render for any
 -- viewer in the app.
-DROP POLICY IF EXISTS "Public can view avatars" ON storage.objects;
-CREATE POLICY "Public can view avatars"
+DROP POLICY IF EXISTS avatars_public_select ON storage.objects;
+CREATE POLICY avatars_public_select
   ON storage.objects FOR SELECT
   TO public
   USING (bucket_id = 'avatars');
 
 -- An authenticated user may only upload into their own user-id folder.
-DROP POLICY IF EXISTS "Users can upload their own avatar" ON storage.objects;
-CREATE POLICY "Users can upload their own avatar"
+DROP POLICY IF EXISTS avatars_owner_insert ON storage.objects;
+CREATE POLICY avatars_owner_insert
   ON storage.objects FOR INSERT
   TO authenticated
   WITH CHECK (
@@ -55,8 +55,8 @@ CREATE POLICY "Users can upload their own avatar"
   );
 
 -- An authenticated user may only update objects in their own user-id folder.
-DROP POLICY IF EXISTS "Users can update their own avatar" ON storage.objects;
-CREATE POLICY "Users can update their own avatar"
+DROP POLICY IF EXISTS avatars_owner_update ON storage.objects;
+CREATE POLICY avatars_owner_update
   ON storage.objects FOR UPDATE
   TO authenticated
   USING (
@@ -69,8 +69,8 @@ CREATE POLICY "Users can update their own avatar"
   );
 
 -- An authenticated user may only delete objects in their own user-id folder.
-DROP POLICY IF EXISTS "Users can delete their own avatar" ON storage.objects;
-CREATE POLICY "Users can delete their own avatar"
+DROP POLICY IF EXISTS avatars_owner_delete ON storage.objects;
+CREATE POLICY avatars_owner_delete
   ON storage.objects FOR DELETE
   TO authenticated
   USING (

@@ -921,8 +921,17 @@ class SupabaseService {
 
       final publicUrl = _client.storage.from('avatars').getPublicUrl(path);
 
+      // The storage path is fixed per user, so the public URL is identical
+      // across uploads -- Image.network (and browser caching generally)
+      // caches by URL, so without a cache-busting suffix a re-uploaded
+      // avatar could keep showing the previous cached image. Append one
+      // here so every downstream consumer (DB, result map, UI) sees and
+      // uses the same versioned URL.
+      final versionedUrl =
+          '$publicUrl?v=${DateTime.now().millisecondsSinceEpoch}';
+
       final profileUpdated =
-          await updateUserProfile({'avatar_url': publicUrl});
+          await updateUserProfile({'avatar_url': versionedUrl});
       if (!profileUpdated) {
         return {
           'success': false,
@@ -932,7 +941,7 @@ class SupabaseService {
 
       return {
         'success': true,
-        'avatar_url': publicUrl,
+        'avatar_url': versionedUrl,
       };
     } catch (e) {
       debugPrint('Error uploading avatar: $e');
@@ -966,11 +975,23 @@ class SupabaseService {
 
       try {
         await _client.storage.from('avatars').remove([path]);
-      } catch (e) {
-        // The object may not exist (e.g. the user never uploaded an
-        // avatar) -- that's not a hard failure as long as we can still
-        // clear avatar_url on the profile below.
-        debugPrint('Error removing avatar object (continuing): $e');
+      } on StorageException catch (e) {
+        // Only treat a genuine "object not found" as idempotent/OK (e.g.
+        // the user never uploaded an avatar, or it was already removed).
+        // Any other StorageException (permissions, network, etc.) is a
+        // real failure -- avatar_url must NOT be cleared in that case, or
+        // the app would think there's no avatar while the file is still
+        // sitting in (and publicly accessible from) storage.
+        final isNotFound = e.statusCode == '404' ||
+            (e.error?.toLowerCase() == 'not_found') ||
+            e.message.toLowerCase().contains('not found');
+        if (!isNotFound) {
+          return {
+            'success': false,
+            'error': 'Failed to remove avatar file: ${e.message}',
+          };
+        }
+        debugPrint('Avatar object already absent, continuing: ${e.message}');
       }
 
       final profileUpdated =
