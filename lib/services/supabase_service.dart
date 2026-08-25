@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -889,7 +889,12 @@ class SupabaseService {
   // the path convention documented in
   // supabase/migrations/20251021110000_avatar_url_and_storage.sql and
   // avoiding orphaned old avatar files accumulating in storage.
-  Future<Map<String, dynamic>> uploadAvatar(File imageFile) async {
+  //
+  // Takes raw bytes rather than a dart:io File: File-based upload
+  // (StorageFileApi.upload) is not supported on Flutter Web, since
+  // dart:io's File has no real filesystem backing there. uploadBinary()
+  // works identically across web, mobile, and desktop.
+  Future<Map<String, dynamic>> uploadAvatar(Uint8List imageBytes) async {
     try {
       if (!_isInitialized) {
         return {
@@ -908,9 +913,9 @@ class SupabaseService {
 
       final path = '${user.id}/avatar.jpg';
 
-      await _client.storage.from('avatars').upload(
+      await _client.storage.from('avatars').uploadBinary(
             path,
-            imageFile,
+            imageBytes,
             fileOptions: const FileOptions(upsert: true),
           );
 

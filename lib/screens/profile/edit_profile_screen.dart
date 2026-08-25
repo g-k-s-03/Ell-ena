@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -173,10 +173,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
       if (picked == null || !mounted) return;
 
-      final file = File(picked.path);
-      final confirmed = await _showAvatarPreviewDialog(file);
+      // Read bytes rather than using picked.path: XFile.path has no real
+      // filesystem backing on Flutter Web, so both the preview and the
+      // upload work from bytes instead, which behave identically on web,
+      // mobile, and desktop.
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+
+      final confirmed = await _showAvatarPreviewDialog(bytes);
       if (confirmed == true) {
-        await _uploadAvatar(file);
+        await _uploadAvatar(bytes);
       }
     } catch (e) {
       if (mounted) {
@@ -190,7 +196,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  Future<bool?> _showAvatarPreviewDialog(File file) {
+  Future<bool?> _showAvatarPreviewDialog(Uint8List bytes) {
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -200,8 +206,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ClipOval(
-              child: Image.file(
-                file,
+              child: Image.memory(
+                bytes,
                 width: 140,
                 height: 140,
                 fit: BoxFit.cover,
@@ -235,13 +241,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Future<void> _uploadAvatar(File file) async {
+  Future<void> _uploadAvatar(Uint8List bytes) async {
     setState(() {
       _isAvatarUpdating = true;
     });
 
     try {
-      final result = await _supabaseService.uploadAvatar(file);
+      final result = await _supabaseService.uploadAvatar(bytes);
 
       if (result['success'] == true) {
         final newUrl = result['avatar_url'] as String?;
