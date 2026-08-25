@@ -79,6 +79,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // Guards against navigating to Edit Profile before
+  // UserProfileController.refresh() (fired-and-forgotten in
+  // HomeScreen.initState()) has actually completed -- profile can still be
+  // null at that point (e.g. tapping Edit Profile immediately after login).
+  // Mirrors the same full-screen _isLoading pattern already used for
+  // _switchTeam: block briefly on a fresh refresh() rather than force-
+  // unwrapping data that may not have loaded yet.
+  Future<void> _openEditProfile() async {
+    var profile = context.read<UserProfileController>().profile;
+
+    if (profile == null) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      await context.read<UserProfileController>().refresh();
+
+      if (!mounted) return;
+
+      profile = context.read<UserProfileController>().profile;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (profile == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not load your profile. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    final loadedProfile = profile;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditProfileScreen(
+          userProfile: loadedProfile,
+          onProfileUpdated: () {
+            // updateAvatarUrl() already pushed avatar changes into the
+            // shared controller directly; a forced refresh here also
+            // picks up full_name edits, which EditProfileScreen saves via
+            // SupabaseService.updateUserProfile() without touching the
+            // shared controller itself.
+            context.read<UserProfileController>().refresh(forceRefresh: true);
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _handleLogout() async {
     //Confirmation dialog
     final shouldLogout = await showDialog<bool>(
@@ -675,27 +732,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 title: 'Edit Profile',
                 subtitle: 'Update your personal information',
                 iconColor: Colors.blue.shade400,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => EditProfileScreen(
-                        userProfile: profileController.profile!,
-                        onProfileUpdated: () {
-                          // updateAvatarUrl() already pushed avatar changes
-                          // into the shared controller directly; a forced
-                          // refresh here also picks up full_name edits,
-                          // which EditProfileScreen saves via
-                          // SupabaseService.updateUserProfile() without
-                          // touching the shared controller itself.
-                          context
-                              .read<UserProfileController>()
-                              .refresh(forceRefresh: true);
-                        },
-                      ),
-                    ),
-                  );
-                },
+                onTap: _openEditProfile,
               ),
               const Divider(color: Colors.grey),
               _buildSettingItem(
